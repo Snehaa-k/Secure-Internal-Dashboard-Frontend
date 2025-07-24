@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 const LoginPage = () => {
@@ -8,14 +8,11 @@ const LoginPage = () => {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { authenticateWithPasskey, registerPasskey, isAuthenticated } = useAuth()
-  const navigate = useNavigate()
 
   // Redirect if already authenticated
-  useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/')
-    }
-  }, [isAuthenticated, navigate])
+  if (isAuthenticated) {
+    return <Navigate to="/" replace />
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -33,9 +30,7 @@ const LoginPage = () => {
         result = await authenticateWithPasskey(username)
       }
 
-      if (result.success) {
-        navigate('/')
-      } else {
+      if (!result.success) {
         setError(result.error || 'Authentication failed')
       }
     } catch (err) {

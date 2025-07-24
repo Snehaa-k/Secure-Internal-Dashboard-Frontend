@@ -1,26 +1,31 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react'
 import { callsApi } from '../services/api'
 
-const CallHistory = () => {
+const CallHistory = forwardRef((props, ref) => {
   const [callHistory, setCallHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+
   
-  useEffect(() => {
-    const fetchCallHistory = async () => {
-      try {
-        setLoading(true)
-        const response = await callsApi.getCallHistory()
-        setCallHistory(response.data)
-        setError(null)
-      } catch (err) {
-        setError('Failed to load call history')
-        console.error('Error fetching call history:', err)
-      } finally {
-        setLoading(false)
-      }
+  const fetchCallHistory = async () => {
+    try {
+      setLoading(true)
+      const response = await callsApi.getCallHistory()
+      setCallHistory(response.data)
+      setError(null)
+    } catch (err) {
+      setError('Failed to load call history')
+      console.error('Error fetching call history:', err)
+    } finally {
+      setLoading(false)
     }
-    
+  }
+
+  useImperativeHandle(ref, () => ({
+    refreshHistory: fetchCallHistory
+  }))
+
+  useEffect(() => {
     fetchCallHistory()
     
     // Refresh call history every 30 seconds
@@ -30,7 +35,15 @@ const CallHistory = () => {
   }, [])
   
   const formatDate = (dateString) => {
+    if (!dateString) return 'N/A'
+    
     const date = new Date(dateString)
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return 'Invalid Date'
+    }
+    
     return new Intl.DateTimeFormat('en-US', {
       month: 'short',
       day: 'numeric',
@@ -66,14 +79,13 @@ const CallHistory = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Number</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {callHistory.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="px-6 py-4 text-center text-sm text-gray-500">
+                  <td colSpan="4" className="px-6 py-4 text-center text-sm text-gray-500">
                     No call history found
                   </td>
                 </tr>
@@ -81,16 +93,13 @@ const CallHistory = () => {
                 callHistory.map((call) => (
                   <tr key={call.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {call.contactName || 'Unknown'}
+                      {call.contact_name || 'Unknown'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {call.phoneNumber}
+                      {call.phone_number}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(call.timestamp)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDuration(call.duration)}
+                      {formatDate(call.created_at)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
@@ -98,7 +107,7 @@ const CallHistory = () => {
                           ? 'bg-green-100 text-green-800' 
                           : 'bg-blue-100 text-blue-800'
                       }`}>
-                        {call.direction === 'outgoing' ? 'Outgoing' : 'Incoming'}
+                        {call.direction === 'outgoing' ? 'Outgoing' : 'Incoming'} - {call.status}
                       </span>
                     </td>
                   </tr>
@@ -110,6 +119,6 @@ const CallHistory = () => {
       )}
     </div>
   )
-}
+})
 
 export default CallHistory

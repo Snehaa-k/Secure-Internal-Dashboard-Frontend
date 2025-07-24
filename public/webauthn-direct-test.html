@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebAuthn Direct Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    button {
+      padding: 10px;
+      margin: 5px;
+      cursor: pointer;
+    }
+    pre {
+      background-color: #f5f5f5;
+      padding: 10px;
+      border-radius: 5px;
+      overflow-x: auto;
+    }
+    .error {
+      color: red;
+    }
+    .success {
+      color: green;
+    }
+  </style>
+</head>
+<body>
+  <h1>WebAuthn Direct Test</h1>
+  
+  <div>
+    <h2>1. Check if WebAuthn is supported</h2>
+    <button id="checkSupport">Check WebAuthn Support</button>
+    <div id="supportResult"></div>
+  </div>
+  
+  <div>
+    <h2>2. Create a credential</h2>
+    <button id="createCredential">Create Credential</button>
+    <div id="createResult"></div>
+  </div>
+  
+  <div>
+    <h2>3. Get a credential</h2>
+    <button id="getCredential">Get Credential</button>
+    <div id="getResult"></div>
+  </div>
+  
+  <script>
+    // Check WebAuthn support
+    document.getElementById('checkSupport').addEventListener('click', function() {
+      const supportResult = document.getElementById('supportResult');
+      
+      if (window.PublicKeyCredential) {
+        supportResult.innerHTML = '<p class="success">WebAuthn is supported in this browser!</p>';
+        
+        // Check if user verification is available
+        if (PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
+          PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+            .then(available => {
+              if (available) {
+                supportResult.innerHTML += '<p class="success">Platform authenticator with user verification is available.</p>';
+              } else {
+                supportResult.innerHTML += '<p>Platform authenticator with user verification is NOT available.</p>';
+              }
+            });
+        }
+      } else {
+        supportResult.innerHTML = '<p class="error">WebAuthn is NOT supported in this browser.</p>';
+      }
+    });
+    
+    // Create credential
+    document.getElementById('createCredential').addEventListener('click', async function() {
+      const createResult = document.getElementById('createResult');
+      
+      try {
+        // Generate a random user ID
+        const userId = new Uint8Array(16);
+        window.crypto.getRandomValues(userId);
+        
+        // Create PublicKeyCredentialCreationOptions
+        const publicKeyCredentialCreationOptions = {
+          challenge: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
+          rp: {
+            name: "WebAuthn Test",
+            id: window.location.hostname
+          },
+          user: {
+            id: userId,
+            name: "test@example.com",
+            displayName: "Test User"
+          },
+          pubKeyCredParams: [
+            { type: "public-key", alg: -7 }, // ES256
+            { type: "public-key", alg: -257 } // RS256
+          ],
+          authenticatorSelection: {
+            authenticatorAttachment: "platform",
+            userVerification: "preferred"
+          },
+          timeout: 60000,
+          attestation: "none"
+        };
+        
+        createResult.innerHTML = '<p>Creating credential...</p>';
+        
+        // Create credential
+        const credential = await navigator.credentials.create({
+          publicKey: publicKeyCredentialCreationOptions
+        });
+        
+        createResult.innerHTML = '<p class="success">Credential created successfully!</p>';
+        createResult.innerHTML += '<pre>' + JSON.stringify({
+          id: credential.id,
+          type: credential.type,
+          rawId: arrayBufferToBase64(credential.rawId),
+          response: {
+            attestationObject: arrayBufferToBase64(credential.response.attestationObject),
+            clientDataJSON: arrayBufferToBase64(credential.response.clientDataJSON)
+          }
+        }, null, 2) + '</pre>';
+        
+        // Store credential ID for later use
+        localStorage.setItem('credentialId', credential.id);
+        localStorage.setItem('credentialRawId', arrayBufferToBase64(credential.rawId));
+        
+      } catch (error) {
+        createResult.innerHTML = '<p class="error">Error creating credential: ' + error.message + '</p>';
+        console.error('Error creating credential:', error);
+      }
+    });
+    
+    // Get credential
+    document.getElementById('getCredential').addEventListener('click', async function() {
+      const getResult = document.getElementById('getResult');
+      
+      try {
+        const storedId = localStorage.getItem('credentialId');
+        const storedRawId = localStorage.getItem('credentialRawId');
+        
+        if (!storedId || !storedRawId) {
+          getResult.innerHTML = '<p class="error">No stored credential found. Create a credential first.</p>';
+          return;
+        }
+        
+        // Create PublicKeyCredentialRequestOptions
+        const publicKeyCredentialRequestOptions = {
+          challenge: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
+          allowCredentials: [{
+            id: base64ToArrayBuffer(storedRawId),
+            type: 'public-key',
+            transports: ['internal']
+          }],
+          userVerification: "preferred",
+          timeout: 60000
+        };
+        
+        getResult.innerHTML = '<p>Getting credential...</p>';
+        
+        // Get credential
+        const assertion = await navigator.credentials.get({
+          publicKey: publicKeyCredentialRequestOptions
+        });
+        
+        getResult.innerHTML = '<p class="success">Credential retrieved successfully!</p>';
+        getResult.innerHTML += '<pre>' + JSON.stringify({
+          id: assertion.id,
+          type: assertion.type,
+          rawId: arrayBufferToBase64(assertion.rawId),
+          response: {
+            authenticatorData: arrayBufferToBase64(assertion.response.authenticatorData),
+            clientDataJSON: arrayBufferToBase64(assertion.response.clientDataJSON),
+            signature: arrayBufferToBase64(assertion.response.signature),
+            userHandle: assertion.response.userHandle ? arrayBufferToBase64(assertion.response.userHandle) : null
+          }
+        }, null, 2) + '</pre>';
+        
+      } catch (error) {
+        getResult.innerHTML = '<p class="error">Error getting credential: ' + error.message + '</p>';
+        console.error('Error getting credential:', error);
+      }
+    });
+    
+    // Helper function to convert ArrayBuffer to Base64
+    function arrayBufferToBase64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return window.btoa(binary);
+    }
+    
+    // Helper function to convert Base64 to ArrayBuffer
+    function base64ToArrayBuffer(base64) {
+      const binaryString = window.atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes.buffer;
+    }
+  </script>
+</body>
+</html>

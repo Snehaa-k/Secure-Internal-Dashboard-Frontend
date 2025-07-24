@@ -28,16 +28,16 @@ const WebDialer = ({ selectedContact }) => {
   useEffect(() => {
     let statusInterval
     
-    if (currentCallId && ['dialing', 'ringing', 'connected'].includes(callStatus)) {
+    if (currentCallId && ['queued', 'ringing', 'in-progress'].includes(callStatus)) {
       statusInterval = setInterval(async () => {
         try {
           const response = await callsApi.getCallStatus(currentCallId)
-          const newStatus = response.data.status
+          const newStatus = response.data.call?.status || response.data.status
           
           setCallStatus(newStatus)
           
           // Start timer when call connects
-          if (newStatus === 'connected' && callStatus !== 'connected') {
+          if (newStatus === 'in-progress' && callStatus !== 'in-progress') {
             const timer = setInterval(() => {
               setCallDuration(prev => prev + 1)
             }, 1000)
@@ -45,7 +45,7 @@ const WebDialer = ({ selectedContact }) => {
           }
           
           // Stop timer when call ends
-          if (newStatus === 'ended' && callStatus !== 'ended') {
+          if (['completed', 'failed', 'busy', 'no-answer', 'canceled'].includes(newStatus) && !['completed', 'failed', 'busy', 'no-answer', 'canceled'].includes(callStatus)) {
             if (timerInterval) {
               clearInterval(timerInterval)
               setTimerInterval(null)
@@ -86,7 +86,7 @@ const WebDialer = ({ selectedContact }) => {
     try {
       setCallStatus('dialing')
       const response = await callsApi.initiateCall(phoneNumber)
-      setCurrentCallId(response.data.callId)
+      setCurrentCallId(response.data.call_id)
       setCallStatus(response.data.status)
     } catch (error) {
       console.error('Error initiating call:', error)
@@ -99,7 +99,7 @@ const WebDialer = ({ selectedContact }) => {
     
     try {
       await callsApi.endCall(currentCallId)
-      setCallStatus('ended')
+      setCallStatus('completed')
       
       if (timerInterval) {
         clearInterval(timerInterval)
@@ -159,14 +159,16 @@ const WebDialer = ({ selectedContact }) => {
         
         {callStatus !== 'idle' && (
           <div className="text-center py-2">
-            {callStatus === 'dialing' && <p className="text-blue-500">Dialing...</p>}
+            {callStatus === 'queued' && <p className="text-blue-500">Queued...</p>}
             {callStatus === 'ringing' && <p className="text-blue-500">Ringing...</p>}
-            {callStatus === 'connected' && (
+            {callStatus === 'in-progress' && (
               <p className="text-green-500">
                 Connected - {formatDuration(callDuration)}
               </p>
             )}
-            {callStatus === 'ended' && <p className="text-red-500">Call Ended</p>}
+            {['completed', 'failed', 'busy', 'no-answer', 'canceled'].includes(callStatus) && (
+              <p className="text-red-500">Call {callStatus}</p>
+            )}
           </div>
         )}
       </div>

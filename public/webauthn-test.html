@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebAuthn Test</title>
+  <script src="https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@7/dist/bundle/index.umd.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      background-color: #f9f9f9;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    button {
+      background-color: #4CAF50;
+      border: none;
+      color: white;
+      padding: 10px 20px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 16px;
+      margin: 4px 2px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    input {
+      padding: 10px;
+      margin: 10px 0;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .error {
+      color: red;
+      margin-top: 10px;
+    }
+    .success {
+      color: green;
+      margin-top: 10px;
+    }
+    pre {
+      background-color: #f1f1f1;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>WebAuthn Test Page</h1>
+  
+  <div class="container">
+    <h2>Register</h2>
+    <input type="text" id="registerUsername" placeholder="Username">
+    <button id="registerButton">Register</button>
+    <div id="registerStatus"></div>
+    <pre id="registerResult"></pre>
+  </div>
+  
+  <div class="container">
+    <h2>Login</h2>
+    <input type="text" id="loginUsername" placeholder="Username">
+    <button id="loginButton">Login</button>
+    <div id="loginStatus"></div>
+    <pre id="loginResult"></pre>
+  </div>
+  
+  <script>
+    const API_URL = 'http://localhost:8000/api';
+    const { startRegistration, startAuthentication } = SimpleWebAuthnBrowser;
+    
+    // Register
+    document.getElementById('registerButton').addEventListener('click', async () => {
+      const username = document.getElementById('registerUsername').value;
+      const statusElement = document.getElementById('registerStatus');
+      const resultElement = document.getElementById('registerResult');
+      
+      if (!username) {
+        statusElement.textContent = 'Please enter a username';
+        statusElement.className = 'error';
+        return;
+      }
+      
+      try {
+        statusElement.textContent = 'Getting registration options...';
+        statusElement.className = '';
+        
+        // 1. Get registration options
+        const optionsResponse = await fetch(`${API_URL}/auth/register/options`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username }),
+          credentials: 'include'
+        });
+        
+        if (!optionsResponse.ok) {
+          throw new Error(`Server returned ${optionsResponse.status}: ${await optionsResponse.text()}`);
+        }
+        
+        const options = await optionsResponse.json();
+        resultElement.textContent = JSON.stringify(options, null, 2);
+        
+        statusElement.textContent = 'Creating credential...';
+        
+        // 2. Create credential
+        const attResp = await startRegistration(options);
+        resultElement.textContent = JSON.stringify(attResp, null, 2);
+        
+        statusElement.textContent = 'Verifying credential...';
+        
+        // 3. Verify with server
+        const verifyResponse = await fetch(`${API_URL}/auth/register/verify`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            attestationResponse: attResp,
+            username
+          }),
+          credentials: 'include'
+        });
+        
+        if (!verifyResponse.ok) {
+          throw new Error(`Server returned ${verifyResponse.status}: ${await verifyResponse.text()}`);
+        }
+        
+        const verifyResult = await verifyResponse.json();
+        resultElement.textContent = JSON.stringify(verifyResult, null, 2);
+        
+        statusElement.textContent = 'Registration successful!';
+        statusElement.className = 'success';
+        
+        // Store token
+        localStorage.setItem('authToken', verifyResult.token);
+        
+      } catch (error) {
+        console.error('Registration error:', error);
+        statusElement.textContent = `Error: ${error.message}`;
+        statusElement.className = 'error';
+      }
+    });
+    
+    // Login
+    document.getElementById('loginButton').addEventListener('click', async () => {
+      const username = document.getElementById('loginUsername').value;
+      const statusElement = document.getElementById('loginStatus');
+      const resultElement = document.getElementById('loginResult');
+      
+      if (!username) {
+        statusElement.textContent = 'Please enter a username';
+        statusElement.className = 'error';
+        return;
+      }
+      
+      try {
+        statusElement.textContent = 'Getting authentication options...';
+        statusElement.className = '';
+        
+        // 1. Get authentication options
+        const optionsResponse = await fetch(`${API_URL}/auth/login/options`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username }),
+          credentials: 'include'
+        });
+        
+        if (!optionsResponse.ok) {
+          throw new Error(`Server returned ${optionsResponse.status}: ${await optionsResponse.text()}`);
+        }
+        
+        const options = await optionsResponse.json();
+        resultElement.textContent = JSON.stringify(options, null, 2);
+        
+        statusElement.textContent = 'Authenticating...';
+        
+        // 2. Authenticate
+        const authResp = await startAuthentication(options);
+        resultElement.textContent = JSON.stringify(authResp, null, 2);
+        
+        statusElement.textContent = 'Verifying authentication...';
+        
+        // 3. Verify with server
+        const verifyResponse = await fetch(`${API_URL}/auth/login/verify`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            assertionResponse: authResp,
+            username
+          }),
+          credentials: 'include'
+        });
+        
+        if (!verifyResponse.ok) {
+          throw new Error(`Server returned ${verifyResponse.status}: ${await verifyResponse.text()}`);
+        }
+        
+        const verifyResult = await verifyResponse.json();
+        resultElement.textContent = JSON.stringify(verifyResult, null, 2);
+        
+        statusElement.textContent = 'Authentication successful!';
+        statusElement.className = 'success';
+        
+        // Store token
+        localStorage.setItem('authToken', verifyResult.token);
+        
+      } catch (error) {
+        console.error('Authentication error:', error);
+        statusElement.textContent = `Error: ${error.message}`;
+        statusElement.className = 'error';
+      }
+    });
+  </script>
+</body>
+</html>
